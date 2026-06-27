@@ -391,7 +391,7 @@ function popupHTML(c) {
     <div style="margin-top:7px;display:flex;gap:4px;flex-wrap:wrap;">${tags}</div>
     <div class="popup-actions">
       <button class="popup-btn popup-btn-primary" onclick="selectCard('${c.id}')">Ver detalle</button>
-      <button class="popup-btn popup-btn-secondary" onclick="window.open('https://www.google.com/maps/dir/?api=1&destination='+encodeURIComponent(c.address),'_blank')">Cómo llegar</button>
+      <button class="popup-btn popup-btn-secondary" onclick="window.open('https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(c.address),'_blank')">Cómo llegar</button>
     </div>`;
 }
 
