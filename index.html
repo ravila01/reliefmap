@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ReliefMap — Centros de ayuda humanitaria</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&family=Inter:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg-deep:    #0A1629;
+      --bg-mid:     #0F1F3D;
+      --bg-card:    rgba(255,255,255,0.04);
+      --border:     rgba(255,255,255,0.09);
+      --border-md:  rgba(255,255,255,0.15);
+      --text:       #F7F8FA;
+      --text-muted: #8A96A8;
+      --orange:     #E8541A;
+      --green:      #2DB87A;
+      --green-bg:   rgba(45,184,122,0.13);
+      --green-bd:   rgba(45,184,122,0.3);
+      --orange-bg:  rgba(232,84,26,0.12);
+      --orange-bd:  rgba(232,84,26,0.28);
+      --amber:      #E8A87A;
+    }
+    html, body { height: 100%; font-family: 'Inter', sans-serif; background: var(--bg-mid); color: var(--text); }
+
+    .topbar {
+      height: 54px; background: var(--bg-deep);
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 20px; position: relative; z-index: 1000;
+    }
+    .logo { font-family: 'Space Grotesk', sans-serif; font-size: 17px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+    .logo-dot { width: 9px; height: 9px; background: var(--orange); border-radius: 50%; }
+    .topbar-actions { display: flex; gap: 8px; align-items: center; }
+    .btn {
+      font-family: 'Inter', sans-serif; font-size: 13px; font-weight: 500;
+      padding: 7px 14px; border-radius: 7px; border: 1px solid var(--border-md);
+      background: transparent; color: var(--text); cursor: pointer;
+      display: flex; align-items: center; gap: 6px; transition: background 0.15s;
+    }
+    .btn:hover { background: rgba(255,255,255,0.06); }
+    .btn-primary { background: var(--orange); border-color: var(--orange); }
+    .btn-primary:hover { background: #d44a14; }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .layout { display: grid; grid-template-columns: 340px 1fr; height: calc(100vh - 54px); }
+
+    .sidebar { background: var(--bg-deep); border-right: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; }
+    .sidebar-top { padding: 14px 16px 0; flex-shrink: 0; }
+
+    .search-wrap { position: relative; margin-bottom: 12px; }
+    .search-wrap svg { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); color: var(--text-muted); pointer-events: none; }
+    .search {
+      width: 100%; background: rgba(255,255,255,0.06); border: 1px solid var(--border);
+      border-radius: 8px; color: var(--text); font-family: 'Inter', sans-serif;
+      font-size: 13px; padding: 9px 12px 9px 36px; outline: none; transition: border-color 0.15s;
+    }
+    .search::placeholder { color: var(--text-muted); }
+    .search:focus { border-color: var(--border-md); }
+
+    .geo-banner {
+      background: var(--orange-bg); border: 1px solid var(--orange-bd);
+      border-radius: 8px; padding: 10px 12px;
+      display: flex; align-items: flex-start; gap: 9px; margin-bottom: 12px;
+    }
+    .geo-banner svg { color: var(--orange); flex-shrink: 0; margin-top: 1px; }
+    .geo-text { font-size: 12px; color: #ccc; line-height: 1.5; }
+    .geo-text strong { color: var(--text); font-weight: 500; display: block; margin-bottom: 1px; }
+
+    .filters { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+    .chip {
+      font-size: 11px; font-family: 'Inter', sans-serif; padding: 4px 11px;
+      border-radius: 20px; border: 1px solid var(--border-md); color: var(--text-muted);
+      cursor: pointer; background: transparent; transition: all 0.15s;
+    }
+    .chip:hover { color: var(--text); border-color: rgba(255,255,255,0.25); }
+    .chip.active { background: var(--green-bg); border-color: var(--green-bd); color: var(--green); }
+
+    .section-label {
+      font-size: 11px; color: var(--text-muted); text-transform: uppercase;
+      letter-spacing: 0.06em; font-family: 'Space Grotesk', sans-serif; padding: 10px 16px 6px;
+    }
+    .list { flex: 1; overflow-y: auto; padding: 0 10px 16px; }
+    .list::-webkit-scrollbar { width: 4px; }
+    .list::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
+
+    .card {
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: 10px; padding: 12px 14px; margin-bottom: 8px;
+      cursor: pointer; transition: border-color 0.15s, background 0.15s;
+    }
+    .card:hover, .card.selected { border-color: rgba(255,255,255,0.2); background: rgba(255,255,255,0.07); }
+    .card-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+    .card-title { font-family: 'Space Grotesk', sans-serif; font-size: 13px; font-weight: 500; line-height: 1.35; }
+    .badge { font-size: 10px; font-weight: 500; padding: 3px 8px; border-radius: 20px; white-space: nowrap; flex-shrink: 0; display: flex; align-items: center; gap: 3px; }
+    .badge-verified { background: var(--green-bg); color: var(--green); border: 1px solid var(--green-bd); }
+    .badge-pending  { background: var(--orange-bg); color: var(--amber); border: 1px solid var(--orange-bd); }
+    .card-meta { display: flex; gap: 12px; font-size: 11px; color: var(--text-muted); margin-bottom: 7px; flex-wrap: wrap; }
+    .card-meta span { display: flex; align-items: center; gap: 4px; }
+    .tags { display: flex; gap: 4px; flex-wrap: wrap; }
+    .tag { font-size: 10px; padding: 2px 7px; border-radius: 4px; background: rgba(255,255,255,0.07); color: var(--text-muted); }
+    .votes {
+      display: flex; align-items: center; gap: 8px;
+      margin-top: 9px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.06);
+    }
+    .vote-btn {
+      font-size: 11px; font-family: 'Inter', sans-serif;
+      display: flex; align-items: center; gap: 4px;
+      padding: 4px 9px; border-radius: 5px; border: 1px solid var(--border-md);
+      background: transparent; color: var(--text-muted); cursor: pointer; transition: all 0.15s;
+    }
+    .vote-btn.confirm { border-color: var(--green-bd); color: var(--green); }
+    .vote-btn.confirm:hover { background: var(--green-bg); }
+    .vote-btn.report:hover { border-color: var(--orange-bd); color: var(--amber); }
+    .vote-btn.voted { opacity: 0.45; cursor: default; pointer-events: none; }
+
+    #map { width: 100%; height: 100%; z-index: 1; }
+
+    .modal-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 2000;
+      display: flex; align-items: center; justify-content: center;
+      opacity: 0; pointer-events: none; transition: opacity 0.2s;
+    }
+    .modal-overlay.open { opacity: 1; pointer-events: all; }
+    .modal {
+      background: #0D1A30; border: 1px solid var(--border-md); border-radius: 14px;
+      width: 90%; max-width: 520px; padding: 28px 28px 24px;
+      transform: translateY(10px); transition: transform 0.2s;
+      max-height: 90vh; overflow-y: auto;
+    }
+    .modal-overlay.open .modal { transform: translateY(0); }
+    .modal-title { font-family: 'Space Grotesk', sans-serif; font-size: 18px; font-weight: 600; margin-bottom: 6px; }
+    .modal-sub { font-size: 13px; color: var(--text-muted); margin-bottom: 22px; line-height: 1.5; }
+    .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .form-group { display: flex; flex-direction: column; gap: 6px; }
+    .form-group.full { grid-column: 1 / -1; }
+    label { font-size: 12px; color: var(--text-muted); font-weight: 500; }
+    input[type="text"], textarea {
+      background: rgba(255,255,255,0.06); border: 1px solid var(--border-md);
+      border-radius: 7px; color: var(--text); font-family: 'Inter', sans-serif;
+      font-size: 13px; padding: 9px 12px; outline: none; width: 100%; transition: border-color 0.15s;
+    }
+    input:focus, textarea:focus { border-color: var(--orange); }
+    textarea { resize: vertical; min-height: 72px; }
+    .checkbox-group { display: flex; flex-wrap: wrap; gap: 8px; }
+    .check-chip {
+      font-size: 12px; padding: 5px 11px; border-radius: 6px;
+      border: 1px solid var(--border-md); color: var(--text-muted);
+      cursor: pointer; background: transparent; user-select: none; transition: all 0.15s;
+    }
+    .check-chip input { display: none; }
+    .check-chip.checked { background: var(--green-bg); border-color: var(--green-bd); color: var(--green); }
+    .modal-footer { display: flex; justify-content: flex-end; gap: 10px; margin-top: 22px; }
+
+    .toast {
+      position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%) translateY(20px);
+      background: #1a2d4a; border: 1px solid var(--border-md); border-radius: 9px;
+      padding: 11px 18px; font-size: 13px; color: var(--text);
+      opacity: 0; transition: all 0.25s; z-index: 3000; white-space: nowrap;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+    .toast.success { border-color: var(--green-bd); }
+    .toast.error { border-color: var(--orange-bd); }
+    .toast svg { color: var(--green); }
+    .toast.error svg { color: var(--orange); }
+
+    .skeleton {
+      background: linear-gradient(90deg, rgba(255,255,255,0.04) 25%, rgba(255,255,255,0.08) 50%, rgba(255,255,255,0.04) 75%);
+      background-size: 200% 100%; animation: shimmer 1.4s infinite;
+      border-radius: 6px; height: 14px; margin-bottom: 8px;
+    }
+    @keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
+    .skeleton-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; padding: 14px; margin-bottom: 8px; }
+
+    .leaflet-container { background: #162035; }
+    .leaflet-tile { filter: brightness(0.55) saturate(0.4) hue-rotate(190deg); }
+    .leaflet-control-zoom a { background: var(--bg-deep) !important; color: var(--text) !important; border-color: var(--border-md) !important; }
+    .leaflet-control-attribution { background: rgba(10,22,41,0.7) !important; color: var(--text-muted) !important; }
+    .leaflet-control-attribution a { color: var(--text-muted) !important; }
+    .marker-pin {
+      width: 32px; height: 32px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-family: 'Space Grotesk', sans-serif; font-size: 11px; font-weight: 600;
+      border: 2px solid var(--bg-deep);
+    }
+    .marker-verified { background: var(--green); color: #fff; }
+    .marker-pending  { background: #E8A040; color: #fff; }
+    .leaflet-popup-content-wrapper {
+      background: #0D1A30 !important; border: 1px solid var(--border-md) !important;
+      border-radius: 10px !important; color: var(--text) !important;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.5) !important;
+    }
+    .leaflet-popup-tip { background: #0D1A30 !important; }
+    .leaflet-popup-content { margin: 14px 16px !important; }
+    .popup-title { font-family: 'Space Grotesk', sans-serif; font-size: 14px; font-weight: 500; margin-bottom: 6px; }
+    .popup-row { font-size: 12px; color: var(--text-muted); margin-bottom: 4px; display: flex; align-items: center; gap: 6px; }
+    .popup-row svg { color: var(--green); flex-shrink: 0; }
+    .popup-actions { display: flex; gap: 7px; margin-top: 11px; }
+    .popup-btn { font-size: 12px; font-family: 'Inter', sans-serif; font-weight: 500; padding: 6px 12px; border-radius: 6px; cursor: pointer; border: none; }
+    .popup-btn-primary { background: var(--orange); color: #fff; }
+    .popup-btn-secondary { background: rgba(255,255,255,0.08); color: var(--text); }
+    .empty { text-align: center; padding: 40px 20px; color: var(--text-muted); font-size: 13px; }
+    .empty svg { margin-bottom: 10px; opacity: 0.4; }
+
+    @media (max-width: 700px) {
+      .layout { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; }
+      .topbar-actions .btn:not(.btn-primary) { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="logo"><div class="logo-dot"></div>ReliefMap</div>
+  <div class="topbar-actions">
+    <button class="btn" onclick="openModal()">
+      <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+      Proponer centro
+    </button>
+    <button class="btn btn-primary" onclick="locateMe()">
+      <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/></svg>
+      Cerca mío
+    </button>
+  </div>
+</header>
+
+<div class="layout">
+  <aside class="sidebar">
+    <div class="sidebar-top">
+      <div class="search-wrap">
+        <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input class="search" id="search" placeholder="Ciudad, país o tipo de insumo..." oninput="filterCenters()" />
+      </div>
+      <div class="geo-banner" id="geo-banner" style="display:none;">
+        <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/></svg>
+        <div class="geo-text">
+          <strong id="geo-title">Ubicación detectada</strong>
+          <span id="geo-sub"></span>
+        </div>
+      </div>
+      <div class="filters">
+        <button class="chip active" onclick="setFilter('todos',this)">Todos</button>
+        <button class="chip" onclick="setFilter('alimentos',this)">Alimentos</button>
+        <button class="chip" onclick="setFilter('ropa',this)">Ropa</button>
+        <button class="chip" onclick="setFilter('medicamentos',this)">Medicamentos</button>
+        <button class="chip" onclick="setFilter('materiales',this)">Materiales</button>
+        <button class="chip" onclick="setFilter('higiene',this)">Higiene</button>
+      </div>
+    </div>
+    <div class="section-label" id="list-label">Cargando centros...</div>
+    <div class="list" id="card-list">
+      <div class="skeleton-card"><div class="skeleton" style="width:60%"></div><div class="skeleton" style="width:40%"></div><div class="skeleton" style="width:80%"></div></div>
+      <div class="skeleton-card"><div class="skeleton" style="width:70%"></div><div class="skeleton" style="width:35%"></div><div class="skeleton" style="width:60%"></div></div>
+      <div class="skeleton-card"><div class="skeleton" style="width:55%"></div><div class="skeleton" style="width:45%"></div><div class="skeleton" style="width:75%"></div></div>
+    </div>
+  </aside>
+  <div id="map"></div>
+</div>
+
+<!-- MODAL -->
+<div class="modal-overlay" id="modal" onclick="closeModalIfBg(event)">
+  <div class="modal">
+    <div class="modal-title">Proponer un centro de recolección</div>
+    <div class="modal-sub">Tu propuesta quedará pendiente hasta ser verificada por la comunidad y el equipo de ReliefMap.</div>
+    <div class="form-grid">
+      <div class="form-group full">
+        <label>Nombre del centro *</label>
+        <input type="text" id="f-name" placeholder="Ej: Centro Comunitario San Martín" />
+      </div>
+      <div class="form-group full">
+        <label>Dirección completa *</label>
+        <input type="text" id="f-address" placeholder="Calle, número, ciudad, país" />
+      </div>
+      <div class="form-group">
+        <label>Horario de atención</label>
+        <input type="text" id="f-hours" placeholder="Ej: Lun–Sáb 9–18h" />
+      </div>
+      <div class="form-group">
+        <label>Contacto (opcional)</label>
+        <input type="text" id="f-contact" placeholder="Teléfono o email" />
+      </div>
+      <div class="form-group full">
+        <label>¿Qué insumos reciben? *</label>
+        <div class="checkbox-group" id="supply-chips">
+          <label class="check-chip" onclick="toggleChip(this)"><input type="checkbox" value="alimentos" />Alimentos</label>
+          <label class="check-chip" onclick="toggleChip(this)"><input type="checkbox" value="ropa" />Ropa</label>
+          <label class="check-chip" onclick="toggleChip(this)"><input type="checkbox" value="medicamentos" />Medicamentos</label>
+          <label class="check-chip" onclick="toggleChip(this)"><input type="checkbox" value="higiene" />Higiene</label>
+          <label class="check-chip" onclick="toggleChip(this)"><input type="checkbox" value="materiales" />Materiales</label>
+          <label class="check-chip" onclick="toggleChip(this)"><input type="checkbox" value="herramientas" />Herramientas</label>
+        </div>
+      </div>
+      <div class="form-group full">
+        <label>Información adicional</label>
+        <textarea id="f-notes" placeholder="Condiciones especiales, restricciones, contexto del desastre..."></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeModal()">Cancelar</button>
+      <button class="btn btn-primary" id="submit-btn" onclick="submitCenter()">Enviar propuesta</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast">
+  <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+  <span id="toast-msg"></span>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+// ── SUPABASE CONFIG ───────────────────────────────────────────────────────
+const SUPABASE_URL = 'https://wgnkyxrualsdylflbhfu.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_36Uc8RgVcH5xqVT4_yASVQ_TfrIaEVT';
+
+async function sbFetch(path, options = {}) {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+    ...options,
+    headers: {
+      'apikey': SUPABASE_KEY,
+      'Authorization': `Bearer ${SUPABASE_KEY}`,
+      'Content-Type': 'application/json',
+      'Prefer': options.prefer || 'return=representation',
+      ...(options.headers || {})
+    }
+  });
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(err);
+  }
+  const text = await res.text();
+  return text ? JSON.parse(text) : null;
+}
+
+// ── STATIC SEED DATA (shown immediately, replaced when DB loads) ──────────
+const seedCenters = [
+  { id:'s1', name:"Centro Comunitario San Martín", address:"Av. San Martín 1240, CABA, Argentina", hours:"Lun–Sáb 9–18h", lat:-34.607, lng:-58.438, tags:["alimentos","ropa","higiene"], status:"verified", votes_confirm:43 },
+  { id:'s2', name:"Parroquia Ntra. Sra. del Valle", address:"Catamarca 856, CABA, Argentina", hours:"Lun–Dom 8–20h", lat:-34.618, lng:-58.403, tags:["alimentos","medicamentos"], status:"verified", votes_confirm:17 },
+  { id:'s3', name:"Escuela N°14 — Acopio temporal", address:"Defensa 1101, San Telmo, CABA", hours:"Mié y Vie 10–16h", lat:-34.625, lng:-58.370, tags:["materiales","herramientas"], status:"pending", votes_confirm:2 },
+  { id:'s4', name:"Cruz Roja — Sede Córdoba", address:"Av. Colón 120, Córdoba, Argentina", hours:"Lun–Vie 9–17h", lat:-31.417, lng:-64.183, tags:["alimentos","ropa","medicamentos","higiene"], status:"verified", votes_confirm:91 },
+  { id:'s5', name:"Bomberos Voluntarios Mendoza", address:"San Martín 360, Mendoza, Argentina", hours:"Lun–Dom 8–22h", lat:-32.889, lng:-68.845, tags:["materiales","alimentos"], status:"verified", votes_confirm:34 },
+  { id:'s6', name:"Caritas Uruguay — Montevideo", address:"Colonia 1426, Montevideo, Uruguay", hours:"Lun–Vie 10–18h", lat:-34.901, lng:-56.187, tags:["alimentos","ropa","higiene"], status:"verified", votes_confirm:28 },
+  { id:'s7', name:"Centro Apoyo — Santiago Centro", address:"Ahumada 312, Santiago, Chile", hours:"Mar–Sáb 9–17h", lat:-33.437, lng:-70.650, tags:["alimentos","medicamentos","ropa"], status:"verified", votes_confirm:55 },
+  { id:'s8', name:"Asociación Ayuda Brasil — SP", address:"Rua Augusta 900, São Paulo, Brasil", hours:"Lun–Vie 8–18h", lat:-23.554, lng:-46.641, tags:["alimentos","materiales"], status:"pending", votes_confirm:4 }
+];
+
+// ── STATE ─────────────────────────────────────────────────────────────────
+let allCenters   = [...seedCenters];
+let activeFilter = 'todos';
+let searchQuery  = '';
+let userLat = null, userLng = null;
+let selectedId  = null;
+const voteState = {};
+const mapMarkers = {};
+
+// ── MAP INIT ──────────────────────────────────────────────────────────────
+const map = L.map('map', { zoomControl: true }).setView([-34.6, -58.4], 5);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+}).addTo(map);
+
+function makeIcon(c) {
+  const cls = c.status === 'verified' ? 'marker-verified' : 'marker-pending';
+  const label = String(c.name).charAt(0).toUpperCase();
+  return L.divIcon({ html: `<div class="marker-pin ${cls}">${label}</div>`, className: '', iconSize:[32,32], iconAnchor:[16,16], popupAnchor:[0,-18] });
+}
+
+function popupHTML(c) {
+  const tags = (c.tags||[]).map(t=>`<span class="tag">${t}</span>`).join('');
+  return `
+    <div class="popup-title">${c.name}</div>
+    <div class="popup-row"><svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>${c.address}</div>
+    ${c.hours ? `<div class="popup-row"><svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>${c.hours}</div>` : ''}
+    <div style="margin-top:7px;display:flex;gap:4px;flex-wrap:wrap;">${tags}</div>
+    <div class="popup-actions">
+      <button class="popup-btn popup-btn-primary" onclick="selectCard('${c.id}')">Ver detalle</button>
+      <button class="popup-btn popup-btn-secondary" onclick="window.open('https://www.openstreetmap.org/directions?to=${c.lat},${c.lng}','_blank')">Cómo llegar</button>
+    </div>`;
+}
+
+function addMarker(c) {
+  if (!c.lat || !c.lng) return;
+  if (mapMarkers[c.id]) { mapMarkers[c.id].remove(); }
+  const m = L.marker([c.lat, c.lng], { icon: makeIcon(c) })
+    .addTo(map)
+    .bindPopup(popupHTML(c), { maxWidth: 260 });
+  m.on('click', () => selectCard(c.id));
+  mapMarkers[c.id] = m;
+}
+
+// ── RENDER ────────────────────────────────────────────────────────────────
+function dist(la,lo,lb,lo2) {
+  const R=6371, dLat=(lb-la)*Math.PI/180, dLon=(lo2-lo)*Math.PI/180;
+  const a=Math.sin(dLat/2)**2+Math.cos(la*Math.PI/180)*Math.cos(lb*Math.PI/180)*Math.sin(dLon/2)**2;
+  return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+}
+function distLabel(c) {
+  if (userLat===null||!c.lat) return null;
+  const d = dist(userLat,userLng,c.lat,c.lng);
+  return d<1?`${Math.round(d*1000)} m`:`${d.toFixed(1)} km`;
+}
+
+function getVisible() {
+  return allCenters.filter(c => {
+    const mf = activeFilter==='todos' || (c.tags||[]).includes(activeFilter);
+    const q  = searchQuery.toLowerCase();
+    const ms = !q || c.name.toLowerCase().includes(q) || c.address.toLowerCase().includes(q) || (c.tags||[]).some(t=>t.includes(q));
+    return mf && ms;
+  }).sort((a,b) => {
+    if (userLat!==null && a.lat && b.lat) return dist(userLat,userLng,a.lat,a.lng)-dist(userLat,userLng,b.lat,b.lng);
+    return (b.votes_confirm||0)-(a.votes_confirm||0);
+  });
+}
+
+function renderList() {
+  const visible = getVisible();
+  const listEl  = document.getElementById('card-list');
+  const label   = document.getElementById('list-label');
+  label.textContent = userLat!==null && !searchQuery && activeFilter==='todos'
+    ? 'Ordenados por cercanía'
+    : `${visible.length} centro${visible.length!==1?'s':''} encontrado${visible.length!==1?'s':''}`;
+
+  if (!visible.length) {
+    listEl.innerHTML = `<div class="empty"><svg width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg><div>Sin resultados.<br><a href="#" onclick="openModal();return false;" style="color:var(--orange)">¿Querés proponer uno?</a></div></div>`;
+    return;
+  }
+
+  listEl.innerHTML = visible.map(c => {
+    const dl    = distLabel(c);
+    const voted = voteState[c.id];
+    const votes = (c.votes_confirm||0) + (voted==='confirm'?1:0);
+    const isPending = c.status === 'pending';
+    return `
+    <div class="card${selectedId===c.id?' selected':''}" id="card-${c.id}" onclick="selectCard('${c.id}')">
+      <div class="card-header">
+        <div class="card-title">${c.name}</div>
+        <span class="badge ${isPending?'badge-pending':'badge-verified'}">${isPending?'⏳ Pendiente':'✓ Verificado'}</span>
+      </div>
+      <div class="card-meta">
+        ${dl?`<span><svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>${dl}</span>`:''}
+        ${c.hours?`<span><svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>${c.hours}</span>`:''}
+      </div>
+      <div class="tags">${(c.tags||[]).map(t=>`<span class="tag">${t}</span>`).join('')}</div>
+      <div class="votes">
+        <button class="vote-btn confirm${voted?' voted':''}" onclick="vote(event,'${c.id}','confirm')">
+          <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M14 9V5a3 3 0 00-3-3l-4 9v11h11.28a2 2 0 002-1.7l1.38-9a2 2 0 00-2-2.3H14z"/><path d="M7 22H4a2 2 0 01-2-2v-7a2 2 0 012-2h3"/></svg>
+          Funciona (${votes})
+        </button>
+        <button class="vote-btn report${voted==='report'?' voted':''}" onclick="vote(event,'${c.id}','report')">
+          <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>
+          Reportar
+        </button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ── ACTIONS ───────────────────────────────────────────────────────────────
+function selectCard(id) {
+  selectedId = id;
+  renderList();
+  const c = allCenters.find(x=>String(x.id)===String(id));
+  if (c && c.lat) {
+    map.setView([c.lat, c.lng], 13, { animate: true });
+    if (mapMarkers[id]) mapMarkers[id].openPopup();
+    setTimeout(()=>{ const el=document.getElementById(`card-${id}`); if(el) el.scrollIntoView({behavior:'smooth',block:'nearest'}); },100);
+  }
+}
+
+async function vote(e, id, type) {
+  e.stopPropagation();
+  if (voteState[id]) { showToast('Ya registraste tu opinión sobre este centro.', false); return; }
+  voteState[id] = type;
+  renderList();
+  const field = type==='confirm' ? 'votes_confirm' : 'votes_report';
+  const c = allCenters.find(x=>String(x.id)===String(id));
+  if (c) {
+    const newVal = (c[field]||0) + 1;
+    c[field] = newVal;
+    try {
+      await sbFetch(`centers?id=eq.${id}`, { method:'PATCH', body: JSON.stringify({ [field]: newVal }), prefer:'return=minimal' });
+    } catch(err) { console.warn('Vote sync failed:', err); }
+  }
+  showToast(type==='confirm'?'¡Gracias! Tu confirmación ayuda a otros.':'Reporte recibido. Lo revisaremos pronto.', type==='confirm');
+}
+
+function setFilter(f, el) {
+  activeFilter = f;
+  document.querySelectorAll('.chip').forEach(c=>c.classList.remove('active'));
+  el.classList.add('active');
+  renderList();
+}
+
+function filterCenters() {
+  searchQuery = document.getElementById('search').value;
+  renderList();
+}
+
+function locateMe() {
+  if (!navigator.geolocation) { showToast('Tu navegador no soporta geolocalización.', false); return; }
+  navigator.geolocation.getCurrentPosition(pos => {
+    userLat = pos.coords.latitude;
+    userLng = pos.coords.longitude;
+    const banner = document.getElementById('geo-banner');
+    banner.style.display = 'flex';
+    const nearby = getVisible().length;
+    document.getElementById('geo-sub').textContent = `${nearby} centro${nearby!==1?'s':''} ordenado${nearby!==1?'s':''} por cercanía`;
+    L.circleMarker([userLat,userLng],{radius:8,fillColor:'#E8541A',color:'#fff',weight:2,opacity:1,fillOpacity:1})
+      .addTo(map).bindPopup('<div style="color:#F7F8FA;font-size:12px">📍 Tu ubicación</div>');
+    map.setView([userLat,userLng],10,{animate:true});
+    renderList();
+  }, () => showToast('No se pudo obtener tu ubicación.', false));
+}
+
+// ── MODAL ─────────────────────────────────────────────────────────────────
+function openModal()  { document.getElementById('modal').classList.add('open'); }
+function closeModal() { document.getElementById('modal').classList.remove('open'); }
+function closeModalIfBg(e) { if(e.target===e.currentTarget) closeModal(); }
+function toggleChip(el) { setTimeout(()=>{ el.classList.toggle('checked', el.querySelector('input').checked); },0); }
+
+async function submitCenter() {
+  const name    = document.getElementById('f-name').value.trim();
+  const address = document.getElementById('f-address').value.trim();
+  const hours   = document.getElementById('f-hours').value.trim();
+  const contact = document.getElementById('f-contact').value.trim();
+  const notes   = document.getElementById('f-notes').value.trim();
+  const tags    = [...document.querySelectorAll('#supply-chips input:checked')].map(i=>i.value);
+
+  if (!name || !address || !tags.length) {
+    showToast('Completá nombre, dirección e insumos.', false); return;
+  }
+
+  const btn = document.getElementById('submit-btn');
+  btn.disabled = true;
+  btn.textContent = 'Enviando...';
+
+  try {
+    const result = await sbFetch('centers', {
+      method: 'POST',
+      body: JSON.stringify({ name, address, hours, contact, notes, tags, status:'pending' }),
+      prefer: 'return=representation'
+    });
+
+    if (result && result[0]) {
+      const newCenter = result[0];
+      allCenters.unshift(newCenter);
+      if (newCenter.lat) addMarker(newCenter);
+      renderList();
+    }
+
+    closeModal();
+    showToast('¡Propuesta enviada! Quedará pendiente de verificación.', true);
+    ['f-name','f-address','f-hours','f-contact','f-notes'].forEach(id=>document.getElementById(id).value='');
+    document.querySelectorAll('#supply-chips input').forEach(i=>i.checked=false);
+    document.querySelectorAll('.check-chip').forEach(c=>c.classList.remove('checked'));
+  } catch(err) {
+    showToast('Error al enviar. Revisá tu conexión.', false);
+    console.error(err);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Enviar propuesta';
+  }
+}
+
+// ── TOAST ─────────────────────────────────────────────────────────────────
+function showToast(msg, success=true) {
+  const t = document.getElementById('toast');
+  document.getElementById('toast-msg').textContent = msg;
+  t.className = 'toast ' + (success?'success':'error') + ' show';
+  setTimeout(()=>t.classList.remove('show'), 3200);
+}
+
+// ── LOAD FROM SUPABASE ────────────────────────────────────────────────────
+async function loadCenters() {
+  try {
+    const data = await sbFetch('centers?select=*&order=created_at.desc', { prefer:'return=representation' });
+    if (data && data.length > 0) {
+      allCenters = data;
+      Object.values(mapMarkers).forEach(m=>m.remove());
+    }
+    allCenters.forEach(addMarker);
+    renderList();
+    document.getElementById('list-label').textContent = `${allCenters.length} centro${allCenters.length!==1?'s':''} en la plataforma`;
+  } catch(err) {
+    console.warn('Supabase load failed, using seed data:', err);
+    allCenters = [...seedCenters];
+    allCenters.forEach(addMarker);
+    renderList();
+  }
+}
+
+// ── INIT ──────────────────────────────────────────────────────────────────
+seedCenters.forEach(addMarker);
+renderList();
+loadCenters();
+</script>
+</body>
+</html>
