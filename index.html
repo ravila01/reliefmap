@@ -244,13 +244,19 @@
           <span id="geo-sub"></span>
         </div>
       </div>
-      <div class="filters">
+      <div class="filters" id="tag-filters">
         <button class="chip active" onclick="setFilter('todos',this)">Todos</button>
         <button class="chip" onclick="setFilter('alimentos',this)">Alimentos</button>
         <button class="chip" onclick="setFilter('ropa',this)">Ropa</button>
         <button class="chip" onclick="setFilter('medicamentos',this)">Medicamentos</button>
         <button class="chip" onclick="setFilter('materiales',this)">Materiales</button>
         <button class="chip" onclick="setFilter('higiene',this)">Higiene</button>
+      </div>
+      <div style="padding: 0 0 10px;">
+        <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em;font-family:'Space Grotesk',sans-serif;margin-bottom:6px;">Filtrar por emergencia</div>
+        <select id="event-filter" onchange="setEvent(this.value)" style="width:100%;background:rgba(255,255,255,0.06);border:1px solid var(--border-md);border-radius:7px;color:var(--text);font-family:'Inter',sans-serif;font-size:12px;padding:7px 10px;outline:none;">
+          <option value="">Todas las emergencias</option>
+        </select>
       </div>
     </div>
     <div class="section-label" id="list-label">Cargando centros...</div>
@@ -295,6 +301,10 @@
           <label class="check-chip" onclick="toggleChip(this)"><input type="checkbox" value="materiales" />Materiales</label>
           <label class="check-chip" onclick="toggleChip(this)"><input type="checkbox" value="herramientas" />Herramientas</label>
         </div>
+      </div>
+      <div class="form-group full">
+        <label>Emergencia o causa (opcional)</label>
+        <input type="text" id="f-event" placeholder="Ej: Terremoto Venezuela 2026, Inundaciones Litoral 2025..." />
       </div>
       <div class="form-group full">
         <label>Información adicional</label>
@@ -353,6 +363,7 @@ const seedCenters = [
 // ── STATE ─────────────────────────────────────────────────────────────────
 let allCenters   = [...seedCenters];
 let activeFilter = 'todos';
+let activeEvent  = '';
 let searchQuery  = '';
 let userLat = null, userLng = null;
 let selectedId  = null;
@@ -380,7 +391,7 @@ function popupHTML(c) {
     <div style="margin-top:7px;display:flex;gap:4px;flex-wrap:wrap;">${tags}</div>
     <div class="popup-actions">
       <button class="popup-btn popup-btn-primary" onclick="selectCard('${c.id}')">Ver detalle</button>
-      <button class="popup-btn popup-btn-secondary" onclick="window.open('https://www.openstreetmap.org/directions?to=${c.lat},${c.lng}','_blank')">Cómo llegar</button>
+      <button class="popup-btn popup-btn-secondary" onclick="window.open('https://www.google.com/maps/dir/?api=1&destination='+encodeURIComponent(c.address),'_blank')">Cómo llegar</button>
     </div>`;
 }
 
@@ -409,9 +420,10 @@ function distLabel(c) {
 function getVisible() {
   return allCenters.filter(c => {
     const mf = activeFilter==='todos' || (c.tags||[]).includes(activeFilter);
+    const me = !activeEvent || (c.event||'')=== activeEvent;
     const q  = searchQuery.toLowerCase();
     const ms = !q || c.name.toLowerCase().includes(q) || c.address.toLowerCase().includes(q) || (c.tags||[]).some(t=>t.includes(q));
-    return mf && ms;
+    return mf && me && ms;
   }).sort((a,b) => {
     if (userLat!==null && a.lat && b.lat) return dist(userLat,userLng,a.lat,a.lng)-dist(userLat,userLng,b.lat,b.lng);
     return (b.votes_confirm||0)-(a.votes_confirm||0);
@@ -497,6 +509,11 @@ function setFilter(f, el) {
   renderList();
 }
 
+function setEvent(val) {
+  activeEvent = val;
+  renderList();
+}
+
 function filterCenters() {
   searchQuery = document.getElementById('search').value;
   renderList();
@@ -530,6 +547,7 @@ async function submitCenter() {
   const hours   = document.getElementById('f-hours').value.trim();
   const contact = document.getElementById('f-contact').value.trim();
   const notes   = document.getElementById('f-notes').value.trim();
+  const event   = document.getElementById('f-event').value.trim();
   const tags    = [...document.querySelectorAll('#supply-chips input:checked')].map(i=>i.value);
 
   if (!name || !address || !tags.length) {
@@ -543,7 +561,7 @@ async function submitCenter() {
   try {
     const result = await sbFetch('centers', {
       method: 'POST',
-      body: JSON.stringify({ name, address, hours, contact, notes, tags, status:'pending' }),
+      body: JSON.stringify({ name, address, hours, contact, notes, tags, event: event||null, status:'pending' }),
       prefer: 'return=representation'
     });
 
@@ -556,7 +574,7 @@ async function submitCenter() {
 
     closeModal();
     showToast('¡Propuesta enviada! Quedará pendiente de verificación.', true);
-    ['f-name','f-address','f-hours','f-contact','f-notes'].forEach(id=>document.getElementById(id).value='');
+    ['f-name','f-address','f-hours','f-contact','f-notes','f-event'].forEach(id=>document.getElementById(id).value='');
     document.querySelectorAll('#supply-chips input').forEach(i=>i.checked=false);
     document.querySelectorAll('.check-chip').forEach(c=>c.classList.remove('checked'));
   } catch(err) {
@@ -577,6 +595,19 @@ function showToast(msg, success=true) {
 }
 
 // ── LOAD FROM SUPABASE ────────────────────────────────────────────────────
+function populateEventFilter(centers) {
+  const events = [...new Set(centers.map(c=>c.event).filter(Boolean))].sort();
+  const sel = document.getElementById('event-filter');
+  const current = sel.value;
+  sel.innerHTML = '<option value="">Todas las emergencias</option>';
+  events.forEach(e => {
+    const opt = document.createElement('option');
+    opt.value = e; opt.textContent = e;
+    if (e === current) opt.selected = true;
+    sel.appendChild(opt);
+  });
+}
+
 async function loadCenters() {
   try {
     const data = await sbFetch('centers?select=*&order=created_at.desc', { prefer:'return=representation' });
@@ -585,6 +616,7 @@ async function loadCenters() {
       Object.values(mapMarkers).forEach(m=>m.remove());
     }
     allCenters.forEach(addMarker);
+    populateEventFilter(allCenters);
     renderList();
     document.getElementById('list-label').textContent = `${allCenters.length} centro${allCenters.length!==1?'s':''} en la plataforma`;
   } catch(err) {
